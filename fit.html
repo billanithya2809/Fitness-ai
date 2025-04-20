@@ -90,6 +90,7 @@
         }
         .counter-display {
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             margin-bottom: 15px;
         }
@@ -100,7 +101,8 @@
             border-radius: 8px;
             text-align: center;
             flex: 1;
-            margin: 0 5px;
+            margin: 5px;
+            min-width: 100px;
         }
         .counter-box p {
             margin: 5px 0;
@@ -140,6 +142,15 @@
             margin-top: 10px;
             font-weight: bold;
         }
+        .exercise-selector {
+            margin-top: 15px;
+            margin-bottom: 15px;
+        }
+        .form-hint {
+            color: #777;
+            font-size: 14px;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -171,6 +182,32 @@
                 <button id="save-profile">Save Profile</button>
                 <div id="profile-message"></div>
                 
+                <div class="exercise-selector">
+                    <h3>Exercise Tracking</h3>
+                    <p class="form-hint">Select which exercises you want to track:</p>
+                    <div>
+                        <input type="checkbox" id="track-pushups" checked>
+                        <label for="track-pushups">Push-ups</label>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="track-curls" checked>
+                        <label for="track-curls">Dumbbell Curls</label>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="track-squats" checked>
+                        <label for="track-squats">Squats</label>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="track-lunges" checked>
+                        <label for="track-lunges">Lunges</label>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="track-planks" checked>
+                        <label for="track-planks">Planks</label>
+                        <div class="form-hint">Timer starts automatically when plank position is detected</div>
+                    </div>
+                </div>
+                
                 <div class="controls">
                     <button id="start-workout">Start Workout</button>
                     <button id="end-workout">End Workout</button>
@@ -193,11 +230,26 @@
                         <p class="count" id="curl-count">0</p>
                     </div>
                     <div class="counter-box">
+                        <p>Squats</p>
+                        <p class="count" id="squat-count">0</p>
+                    </div>
+                    <div class="counter-box">
+                        <p>Lunges</p>
+                        <p class="count" id="lunge-count">0</p>
+                    </div>
+                </div>
+                
+                <div class="counter-display">
+                    <div class="counter-box">
+                        <p>Plank Time</p>
+                        <p class="count" id="plank-time">00:00</p>
+                    </div>
+                    <div class="counter-box">
                         <p>Calories</p>
                         <p class="count" id="calorie-count">0</p>
                     </div>
                     <div class="counter-box">
-                        <p>Time</p>
+                        <p>Workout Time</p>
                         <p class="count" id="time-count">00:00</p>
                     </div>
                 </div>
@@ -206,6 +258,10 @@
                     <h3>Current Status</h3>
                     <p id="push-up-status">Push-up: Not detected</p>
                     <p id="curl-status">Curl: Not detected</p>
+                    <p id="squat-status">Squat: Not detected</p>
+                    <p id="lunge-status">Lunge: Not detected</p>
+                    <p id="plank-status">Plank: Not detected</p>
+                    <p id="form-feedback">Maintain proper form for accurate counting</p>
                 </div>
             </div>
         </div>
@@ -219,6 +275,9 @@
                         <th>Duration (min)</th>
                         <th>Push-ups</th>
                         <th>Dumbbell Curls</th>
+                        <th>Squats</th>
+                        <th>Lunges</th>
+                        <th>Plank Time</th>
                         <th>Calories Burned</th>
                     </tr>
                 </thead>
@@ -230,8 +289,9 @@
     </div>
 
     <script>
-        // Wait for all resources to load including MediaPipe libraries
-        window.addEventListener('load', () => {
+        // Wait for DOM content to be fully loaded before running script
+        document.addEventListener("DOMContentLoaded", function() {
+            console.log("DOM fully loaded and parsed");
             setTimeout(() => {
                 // Initialize the Fitness AI
                 const fitnessAI = new FitnessAI();
@@ -241,11 +301,20 @@
 
         class FitnessAI {
             constructor() {
+                console.log("FitnessAI constructor called");
+                
                 // Initialize variables
                 this.pushUpCount = 0;
                 this.dumbbellCurlCount = 0;
+                this.squatCount = 0;
+                this.lungeCount = 0;
+                this.plankDuration = 0;
                 this.pushUpStage = null;
                 this.curlStage = null;
+                this.squatStage = null;
+                this.lungeStage = null;
+                this.isInPlank = false;
+                this.plankStartTime = null;
                 this.startTime = null;
                 this.caloriesBurned = 0;
                 this.userWeight = 70;
@@ -262,7 +331,18 @@
                     duration: 0,
                     pushUps: 0,
                     dumbbellCurls: 0,
+                    squats: 0,
+                    lunges: 0,
+                    plankTime: 0,
                     caloriesBurned: 0
+                };
+                
+                this.exerciseTracking = {
+                    pushUps: true,
+                    curls: true,
+                    squats: true,
+                    lunges: true,
+                    planks: true
                 };
                 
                 // Pose detection initialized flag
@@ -281,21 +361,30 @@
                 // Counter elements
                 this.pushUpCountElement = document.getElementById('push-up-count');
                 this.curlCountElement = document.getElementById('curl-count');
+                this.squatCountElement = document.getElementById('squat-count');
+                this.lungeCountElement = document.getElementById('lunge-count');
+                this.plankTimeElement = document.getElementById('plank-time');
                 this.calorieCountElement = document.getElementById('calorie-count');
                 this.timeCountElement = document.getElementById('time-count');
                 
                 // Status elements
                 this.pushUpStatusElement = document.getElementById('push-up-status');
                 this.curlStatusElement = document.getElementById('curl-status');
+                this.squatStatusElement = document.getElementById('squat-status');
+                this.lungeStatusElement = document.getElementById('lunge-status');
+                this.plankStatusElement = document.getElementById('plank-status');
+                this.formFeedbackElement = document.getElementById('form-feedback');
                 
-                // Button elements
-                this.startButton = document.getElementById('start-workout');
-                this.endButton = document.getElementById('end-workout');
-                this.resetButton = document.getElementById('reset-counters');
-                this.saveProfileButton = document.getElementById('save-profile');
+                // Exercise tracking checkboxes
+                this.trackPushUpsCheckbox = document.getElementById('track-pushups');
+                this.trackCurlsCheckbox = document.getElementById('track-curls');
+                this.trackSquatsCheckbox = document.getElementById('track-squats');
+                this.trackLungesCheckbox = document.getElementById('track-lunges');
+                this.trackPlanksCheckbox = document.getElementById('track-planks');
                 
                 // Timer
                 this.timer = null;
+                this.plankTimer = null;
                 
                 // Load saved data
                 this.loadUserProfile();
@@ -332,6 +421,92 @@
                     console.error("Error initializing MediaPipe Pose:", error);
                     this.showMessage(this.cameraMessageElement, "Error initializing pose detection. Please reload the page.", "error");
                 }
+            }
+            
+            initializeEventListeners() {
+                console.log("Initializing event listeners");
+                
+                // Save profile button
+                const saveProfileBtn = document.getElementById('save-profile');
+                if (saveProfileBtn) {
+                    saveProfileBtn.addEventListener('click', () => {
+                        console.log("Save Profile button clicked");
+                        this.updateUserProfile();
+                    });
+                } else {
+                    console.error("Save Profile button not found in DOM");
+                }
+                
+                // Start workout button
+                const startWorkoutBtn = document.getElementById('start-workout');
+                if (startWorkoutBtn) {
+                    startWorkoutBtn.addEventListener('click', () => {
+                        console.log("Start Workout button clicked");
+                        this.startWorkout();
+                    });
+                } else {
+                    console.error("Start Workout button not found in DOM");
+                }
+                
+                // End workout button
+                const endWorkoutBtn = document.getElementById('end-workout');
+                if (endWorkoutBtn) {
+                    endWorkoutBtn.addEventListener('click', () => {
+                        console.log("End Workout button clicked");
+                        this.endWorkout();
+                    });
+                } else {
+                    console.error("End Workout button not found in DOM");
+                }
+                
+                // Reset counters button
+                const resetCountersBtn = document.getElementById('reset-counters');
+                if (resetCountersBtn) {
+                    resetCountersBtn.addEventListener('click', () => {
+                        console.log("Reset Counters button clicked");
+                        this.resetCounters();
+                    });
+                } else {
+                    console.error("Reset Counters button not found in DOM");
+                }
+                
+                // Exercise tracking checkboxes
+                if (this.trackPushUpsCheckbox) {
+                    this.trackPushUpsCheckbox.addEventListener('change', () => {
+                        this.exerciseTracking.pushUps = this.trackPushUpsCheckbox.checked;
+                        console.log("Push-ups tracking:", this.exerciseTracking.pushUps);
+                    });
+                }
+                
+                if (this.trackCurlsCheckbox) {
+                    this.trackCurlsCheckbox.addEventListener('change', () => {
+                        this.exerciseTracking.curls = this.trackCurlsCheckbox.checked;
+                        console.log("Curls tracking:", this.exerciseTracking.curls);
+                    });
+                }
+                
+                if (this.trackSquatsCheckbox) {
+                    this.trackSquatsCheckbox.addEventListener('change', () => {
+                        this.exerciseTracking.squats = this.trackSquatsCheckbox.checked;
+                        console.log("Squats tracking:", this.exerciseTracking.squats);
+                    });
+                }
+                
+                if (this.trackLungesCheckbox) {
+                    this.trackLungesCheckbox.addEventListener('change', () => {
+                        this.exerciseTracking.lunges = this.trackLungesCheckbox.checked;
+                        console.log("Lunges tracking:", this.exerciseTracking.lunges);
+                    });
+                }
+                
+                if (this.trackPlanksCheckbox) {
+                    this.trackPlanksCheckbox.addEventListener('change', () => {
+                        this.exerciseTracking.planks = this.trackPlanksCheckbox.checked;
+                        console.log("Planks tracking:", this.exerciseTracking.planks);
+                    });
+                }
+                
+                console.log("All event listeners initialized");
             }
             
             initializeCamera() {
@@ -380,8 +555,15 @@
             }
             
             showMessage(element, message, type = "success") {
+                if (!element) {
+                    console.error("Message element not found:", element);
+                    return;
+                }
+                
                 element.textContent = message;
                 element.className = type === "error" ? "error-message" : "success-message";
+                
+                console.log(`Message (${type}):`, message);
                 
                 // Clear message after 5 seconds
                 setTimeout(() => {
@@ -390,54 +572,57 @@
                 }, 5000);
             }
             
-            initializeEventListeners() {
-                // Start workout button
-                this.startButton.addEventListener('click', () => {
-                    this.startWorkout();
-                });
-                
-                // End workout button
-                this.endButton.addEventListener('click', () => {
-                    this.endWorkout();
-                });
-                
-                // Reset counters button
-                this.resetButton.addEventListener('click', () => {
-                    this.resetCounters();
-                });
-                
-                // Save profile button
-                this.saveProfileButton.addEventListener('click', () => {
-                    this.updateUserProfile();
-                });
-            }
-            
             loadUserProfile() {
                 // Load user profile from localStorage if exists
                 const savedProfile = localStorage.getItem('userProfile');
                 if (savedProfile) {
-                    this.userProfile = JSON.parse(savedProfile);
-                    this.userWeight = this.userProfile.weight;
-                    
-                    // Update form fields
-                    document.getElementById('weight').value = this.userProfile.weight;
-                    document.getElementById('height').value = this.userProfile.height;
-                    document.getElementById('age').value = this.userProfile.age;
-                    document.getElementById('gender').value = this.userProfile.gender;
+                    try {
+                        this.userProfile = JSON.parse(savedProfile);
+                        this.userWeight = this.userProfile.weight;
+                        
+                        // Update form fields
+                        const weightInput = document.getElementById('weight');
+                        const heightInput = document.getElementById('height');
+                        const ageInput = document.getElementById('age');
+                        const genderSelect = document.getElementById('gender');
+                        
+                        if (weightInput) weightInput.value = this.userProfile.weight;
+                        if (heightInput) heightInput.value = this.userProfile.height;
+                        if (ageInput) ageInput.value = this.userProfile.age;
+                        if (genderSelect) genderSelect.value = this.userProfile.gender;
+                        
+                        console.log("User profile loaded:", this.userProfile);
+                    } catch (error) {
+                        console.error("Error parsing saved profile:", error);
+                    }
                 }
             }
             
             saveUserProfile() {
                 // Save user profile to localStorage
                 localStorage.setItem('userProfile', JSON.stringify(this.userProfile));
+                console.log("Profile saved to localStorage:", this.userProfile);
             }
             
             updateUserProfile() {
                 // Get values from form
-                const weight = parseFloat(document.getElementById('weight').value);
-                const height = parseFloat(document.getElementById('height').value);
-                const age = parseInt(document.getElementById('age').value);
-                const gender = document.getElementById('gender').value;
+                const weightInput = document.getElementById('weight');
+                const heightInput = document.getElementById('height');
+                const ageInput = document.getElementById('age');
+                const genderSelect = document.getElementById('gender');
+                
+                if (!weightInput || !heightInput || !ageInput || !genderSelect) {
+                    console.error("One or more profile inputs not found");
+                    this.showMessage(this.profileMessageElement, "Error: Could not find all form fields.", "error");
+                    return;
+                }
+                
+                const weight = parseFloat(weightInput.value);
+                const height = parseFloat(heightInput.value);
+                const age = parseInt(ageInput.value);
+                const gender = genderSelect.value;
+                
+                console.log("Form values:", { weight, height, age, gender });
                 
                 // Validate inputs
                 if (isNaN(weight) || isNaN(height) || isNaN(age)) {
@@ -462,8 +647,13 @@
                 // Load workout history from localStorage if exists
                 const savedHistory = localStorage.getItem('workoutHistory');
                 if (savedHistory) {
-                    this.workoutHistory = JSON.parse(savedHistory);
-                    this.updateHistoryTable();
+                    try {
+                        this.workoutHistory = JSON.parse(savedHistory);
+                        this.updateHistoryTable();
+                        console.log("Workout history loaded:", this.workoutHistory.length, "entries");
+                    } catch (error) {
+                        console.error("Error parsing workout history:", error);
+                    }
                 }
             }
             
@@ -471,20 +661,35 @@
                 // Save workout history to localStorage
                 localStorage.setItem('workoutHistory', JSON.stringify(this.workoutHistory));
                 this.updateHistoryTable();
+                console.log("Workout history saved:", this.workoutHistory.length, "entries");
             }
             
             updateHistoryTable() {
                 const historyBody = document.getElementById('history-body');
+                if (!historyBody) {
+                    console.error("History table body not found");
+                    return;
+                }
+                
                 historyBody.innerHTML = '';
                 
                 // Add each workout to the table
                 this.workoutHistory.forEach(workout => {
                     const row = document.createElement('tr');
+                    
+                    // Format plank time from seconds to MM:SS
+                    const plankMinutes = Math.floor(workout.plankTime / 60);
+                    const plankSeconds = workout.plankTime % 60;
+                    const formattedPlankTime = `${plankMinutes.toString().padStart(2, '0')}:${plankSeconds.toString().padStart(2, '0')}`;
+                    
                     row.innerHTML = `
                         <td>${workout.date}</td>
                         <td>${workout.duration}</td>
                         <td>${workout.pushUps}</td>
                         <td>${workout.dumbbellCurls}</td>
+                        <td>${workout.squats}</td>
+                        <td>${workout.lunges}</td>
+                        <td>${formattedPlankTime}</td>
                         <td>${workout.caloriesBurned}</td>
                     `;
                     historyBody.appendChild(row);
@@ -496,28 +701,89 @@
                 // These are approximate values
                 const metValues = {
                     'pushUp': 3.8,
-                    'dumbbellCurl': 3.0
+                    'dumbbellCurl': 3.0,
+                    'squat': 5.0,
+                    'lunge': 4.6,
+                    'plank': 3.5
                 };
                 
                 // Formula: calories = MET * weight (kg) * duration (hours)
                 // For counting exercises, we'll estimate time based on typical duration
                 let calories = 0;
                 
-                if (exerciseType === 'pushUp') {
-                    // Assuming 1 push-up takes ~3 seconds
-                    const durationHours = (count * 3) / 3600;
-                    calories = metValues.pushUp * this.userWeight * durationHours;
-                } else if (exerciseType === 'dumbbellCurl') {
-                    // Assuming 1 curl takes ~4 seconds
-                    const durationHours = (count * 4) / 3600;
-                    calories = metValues.dumbbellCurl * this.userWeight * durationHours;
+                switch (exerciseType) {
+                    case 'pushUp':
+                        // Assuming 1 push-up takes ~3 seconds
+                        const pushUpDurationHours = (count * 3) / 3600;
+                        calories = metValues.pushUp * this.userWeight * pushUpDurationHours;
+                        break;
+                        
+                    case 'dumbbellCurl':
+                        // Assuming 1 curl takes ~4 seconds
+                        const curlDurationHours = (count * 4) / 3600;
+                        calories = metValues.dumbbellCurl * this.userWeight * curlDurationHours;
+                        break;
+                        
+                    case 'squat':
+                        // Assuming 1 squat takes ~3 seconds
+                        const squatDurationHours = (count * 3) / 3600;
+                        calories = metValues.squat * this.userWeight * squatDurationHours;
+                        break;
+                        
+                    case 'lunge':
+                        // Assuming 1 lunge takes ~5 seconds
+                        const lungeDurationHours = (count * 5) / 3600;
+                        calories = metValues.lunge * this.userWeight * lungeDurationHours;
+                        break;
+                        
+                    case 'plank':
+                        // Plank duration is already in seconds
+                        const plankDurationHours = count / 3600;
+                        calories = metValues.plank * this.userWeight * plankDurationHours;
+                        break;
                 }
                 
                 return calories;
             }
             
+            updateTotalCalories() {
+                // Calculate total calories burned from all exercises
+                let totalCalories = 0;
+                
+                if (this.exerciseTracking.pushUps) {
+                    totalCalories += this.calculateCalories('pushUp', this.pushUpCount);
+                }
+                
+                if (this.exerciseTracking.curls) {
+                    totalCalories += this.calculateCalories('dumbbellCurl', this.dumbbellCurlCount);
+                }
+                
+                if (this.exerciseTracking.squats) {
+                    totalCalories += this.calculateCalories('squat', this.squatCount);
+                }
+                
+                if (this.exerciseTracking.lunges) {
+                    totalCalories += this.calculateCalories('lunge', this.lungeCount);
+                }
+                
+                if (this.exerciseTracking.planks) {
+                    totalCalories += this.calculateCalories('plank', this.plankDuration);
+                }
+                
+                this.caloriesBurned = totalCalories;
+                
+                if (this.calorieCountElement) {
+                    this.calorieCountElement.textContent = this.caloriesBurned.toFixed(2);
+                }
+            }
+            
             async startWorkout() {
-                if (this.isWorkoutActive) return;
+                console.log("startWorkout method called");
+                
+                if (this.isWorkoutActive) {
+                    console.log("Workout already active, ignoring start request");
+                    return;
+                }
                 
                 // Initialize camera if not already done
                 if (!this.cameraInitialized) {
@@ -541,14 +807,17 @@
                 try {
                     // Start the camera
                     await this.camera.start();
-                    this.showMessage(this.cameraMessageElement, "Camera activated successfully!", "success");
+                    this.showMessage(this.cameraMessageElement, "Camera activated successfully! Your workout has started.", "success");
                     
                     // Start timer
                     this.timer = setInterval(() => {
                         const elapsedTime = Math.floor((Date.now() - this.startTime) / 1000);
                         const minutes = Math.floor(elapsedTime / 60);
                         const seconds = elapsedTime % 60;
-                        this.timeCountElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        
+                        if (this.timeCountElement) {
+                            this.timeCountElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        }
                         
                         // Update current workout duration
                         this.currentWorkout.duration = parseFloat((elapsedTime / 60).toFixed(2));
@@ -561,10 +830,20 @@
             }
             
             endWorkout() {
-                if (!this.isWorkoutActive) return;
+                console.log("endWorkout method called");
+                
+                if (!this.isWorkoutActive) {
+                    console.log("No active workout to end");
+                    this.showMessage(this.cameraMessageElement, "No active workout to end.", "error");
+                    return;
+                }
                 
                 this.isWorkoutActive = false;
                 clearInterval(this.timer);
+                if (this.plankTimer) {
+                    clearInterval(this.plankTimer);
+                    this.plankTimer = null;
+                }
                 
                 // Stop the camera
                 try {
@@ -574,6 +853,9 @@
                     this.currentWorkout.date = new Date().toLocaleString();
                     this.currentWorkout.pushUps = this.pushUpCount;
                     this.currentWorkout.dumbbellCurls = this.dumbbellCurlCount;
+                    this.currentWorkout.squats = this.squatCount;
+                    this.currentWorkout.lunges = this.lungeCount;
+                    this.currentWorkout.plankTime = this.plankDuration;
                     this.currentWorkout.caloriesBurned = parseFloat(this.caloriesBurned.toFixed(2));
                     
                     this.workoutHistory.push({...this.currentWorkout});
@@ -582,7 +864,7 @@
                     // Reset for next workout
                     this.resetWorkout();
                     
-                    this.showMessage(this.cameraMessageElement, "Workout ended and saved successfully!", "success");
+                    this.showMessage(this.cameraMessageElement, "Workout ended and saved successfully! Great job!", "success");
                 } catch (error) {
                     console.error("Error stopping camera:", error);
                     this.showMessage(this.cameraMessageElement, "Error stopping camera: " + error.message, "error");
@@ -590,16 +872,37 @@
             }
             
             resetCounters() {
+                console.log("resetCounters method called");
+                
                 this.pushUpCount = 0;
                 this.dumbbellCurlCount = 0;
+                this.squatCount = 0;
+                this.lungeCount = 0;
+                this.plankDuration = 0;
                 this.caloriesBurned = 0;
                 this.pushUpStage = null;
                 this.curlStage = null;
+                this.squatStage = null;
+                this.lungeStage = null;
+                this.isInPlank = false;
+                if (this.plankTimer) {
+                    clearInterval(this.plankTimer);
+                    this.plankTimer = null;
+                }
                 
                 // Update UI
-                this.pushUpCountElement.textContent = '0';
-                this.curlCountElement.textContent = '0';
-                this.calorieCountElement.textContent = '0';
+                if (this.pushUpCountElement) this.pushUpCountElement.textContent = '0';
+                if (this.curlCountElement) this.curlCountElement.textContent = '0';
+                if (this.squatCountElement) this.squatCountElement.textContent = '0';
+                if (this.lungeCountElement) this.lungeCountElement.textContent = '0';
+                if (this.plankTimeElement) this.plankTimeElement.textContent = '00:00';
+                if (this.calorieCountElement) this.calorieCountElement.textContent = '0';
+                
+                if (this.pushUpStatusElement) this.pushUpStatusElement.textContent = 'Push-up: Not detected';
+                if (this.curlStatusElement) this.curlStatusElement.textContent = 'Curl: Not detected';
+                if (this.squatStatusElement) this.squatStatusElement.textContent = 'Squat: Not detected';
+                if (this.lungeStatusElement) this.lungeStatusElement.textContent = 'Lunge: Not detected';
+                if (this.plankStatusElement) this.plankStatusElement.textContent = 'Plank: Not detected';
                 
                 this.showMessage(this.cameraMessageElement, "Counters reset!", "success");
             }
@@ -609,12 +912,15 @@
                 if (this.timer) {
                     clearInterval(this.timer);
                 }
-                this.timeCountElement.textContent = '00:00';
+                if (this.timeCountElement) this.timeCountElement.textContent = '00:00';
                 this.currentWorkout = {
                     date: new Date().toLocaleString(),
                     duration: 0,
                     pushUps: 0,
                     dumbbellCurls: 0,
+                    squats: 0,
+                    lunges: 0,
+                    plankTime: 0,
                     caloriesBurned: 0
                 };
             }
@@ -632,6 +938,8 @@
             }
             
             detectPushUp(landmarks) {
+                if (!this.exerciseTracking.pushUps) return false;
+                
                 // Get relevant keypoints
                 const shoulder = landmarks[11]; // Left shoulder
                 const elbow = landmarks[13]; // Left elbow
@@ -651,20 +959,27 @@
                     // Down position: arms bent
                     if (elbowAngle < 90 && this.pushUpStage === 'up') {
                         this.pushUpStage = 'down';
-                        this.pushUpStatusElement.textContent = 'Push-up: Down position';
+                        if (this.pushUpStatusElement) {
+                            this.pushUpStatusElement.textContent = 'Push-up: Down position';
+                        }
                     }
                     
                     // Up position: arms extended
                     if (elbowAngle > 160 && this.pushUpStage === 'down') {
                         this.pushUpStage = 'up';
                         this.pushUpCount += 1;
-                        this.pushUpCountElement.textContent = this.pushUpCount;
-                        this.pushUpStatusElement.textContent = 'Push-up: Up position';
+                        if (this.pushUpCountElement) {
+                            this.pushUpCountElement.textContent = this.pushUpCount;
+                        }
+                        if (this.pushUpStatusElement) {
+                            this.pushUpStatusElement.textContent = 'Push-up: Up position';
+                        }
+                        if (this.formFeedbackElement) {
+                            this.formFeedbackElement.textContent = 'Good push-up form!';
+                        }
                         
                         // Update calories burned
-                        this.caloriesBurned = this.calculateCalories('pushUp', this.pushUpCount) + 
-                                            this.calculateCalories('dumbbellCurl', this.dumbbellCurlCount);
-                        this.calorieCountElement.textContent = this.caloriesBurned.toFixed(2);
+                        this.updateTotalCalories();
                     }
                 }
                 
@@ -672,10 +987,14 @@
                 if (this.pushUpStage === null) {
                     if (elbowAngle > 160) {
                         this.pushUpStage = 'up';
-                        this.pushUpStatusElement.textContent = 'Push-up: Up position';
+                        if (this.pushUpStatusElement) {
+                            this.pushUpStatusElement.textContent = 'Push-up: Up position';
+                        }
                     } else {
                         this.pushUpStage = 'down';
-                        this.pushUpStatusElement.textContent = 'Push-up: Down position';
+                        if (this.pushUpStatusElement) {
+                            this.pushUpStatusElement.textContent = 'Push-up: Down position';
+                        }
                     }
                 }
                 
@@ -683,6 +1002,8 @@
             }
             
             detectDumbbellCurl(landmarks) {
+                if (!this.exerciseTracking.curls) return false;
+                
                 // Get relevant keypoints
                 const shoulder = landmarks[11]; // Left shoulder
                 const elbow = landmarks[13]; // Left elbow
@@ -701,20 +1022,27 @@
                     // Down position: arm extended
                     if (elbowAngle > 160 && this.curlStage === 'up') {
                         this.curlStage = 'down';
-                        this.curlStatusElement.textContent = 'Curl: Down position';
+                        if (this.curlStatusElement) {
+                            this.curlStatusElement.textContent = 'Curl: Down position';
+                        }
                     }
                     
                     // Up position: arm bent
                     if (elbowAngle < 60 && this.curlStage === 'down') {
                         this.curlStage = 'up';
                         this.dumbbellCurlCount += 1;
-                        this.curlCountElement.textContent = this.dumbbellCurlCount;
-                        this.curlStatusElement.textContent = 'Curl: Up position';
+                        if (this.curlCountElement) {
+                            this.curlCountElement.textContent = this.dumbbellCurlCount;
+                        }
+                        if (this.curlStatusElement) {
+                            this.curlStatusElement.textContent = 'Curl: Up position';
+                        }
+                        if (this.formFeedbackElement) {
+                            this.formFeedbackElement.textContent = 'Good curl form!';
+                        }
                         
                         // Update calories burned
-                        this.caloriesBurned = this.calculateCalories('pushUp', this.pushUpCount) + 
-                                            this.calculateCalories('dumbbellCurl', this.dumbbellCurlCount);
-                        this.calorieCountElement.textContent = this.caloriesBurned.toFixed(2);
+                        this.updateTotalCalories();
                     }
                 }
                 
@@ -722,49 +1050,348 @@
                 if (this.curlStage === null) {
                     if (elbowAngle < 60) {
                         this.curlStage = 'up';
-                        this.curlStatusElement.textContent = 'Curl: Up position';
+                        if (this.curlStatusElement) {
+                            this.curlStatusElement.textContent = 'Curl: Up position';
+                        }
                     } else {
                         this.curlStage = 'down';
-                        this.curlStatusElement.textContent = 'Curl: Down position';
+                        if (this.curlStatusElement) {
+                            this.curlStatusElement.textContent = 'Curl: Down position';
+                        }
                     }
                 }
                 
                 return isStanding;
             }
             
+            detectSquat(landmarks) {
+                if (!this.exerciseTracking.squats) return false;
+                
+                // Get relevant keypoints
+                const hip = landmarks[23]; // Left hip
+                const knee = landmarks[25]; // Left knee
+                const ankle = landmarks[27]; // Left ankle
+                const shoulder = landmarks[11]; // Left shoulder
+                
+                // Calculate knee angle
+                const kneeAngle = this.calculateAngle(hip, knee, ankle);
+                
+                // More reliable posture check for squat
+                const isUpright = shoulder.visibility > 0.5 && hip.visibility > 0.5 &&
+                                 (shoulder.y < hip.y) && // Shoulder above hip
+                                 Math.abs(shoulder.x - hip.x) < 0.3; // Roughly aligned vertically
+                
+                console.log("Squat detection - Knee angle:", kneeAngle, "Upright:", isUpright);
+                
+                if (isUpright) {
+                    // Down position: knees bent (lower threshold to catch more squats)
+                    if (kneeAngle < 130 && this.squatStage === 'up') {
+                        this.squatStage = 'down';
+                        console.log("Squat down position detected");
+                        if (this.squatStatusElement) {
+                            this.squatStatusElement.textContent = 'Squat: Down position';
+                        }
+                    }
+                    
+                    // Up position: legs more extended (lower threshold for easier detection)
+                    if (kneeAngle > 150 && this.squatStage === 'down') {
+                        this.squatStage = 'up';
+                        this.squatCount += 1;
+                        console.log("Squat completed! Count:", this.squatCount);
+                        if (this.squatCountElement) {
+                            this.squatCountElement.textContent = this.squatCount;
+                        }
+                        if (this.squatStatusElement) {
+                            this.squatStatusElement.textContent = 'Squat: Up position';
+                        }
+                        if (this.formFeedbackElement) {
+                            this.formFeedbackElement.textContent = 'Good squat form!';
+                        }
+                        
+                        // Update calories burned
+                        this.updateTotalCalories();
+                    }
+                }
+                
+                // Initialize stage if not set
+                if (this.squatStage === null) {
+                    if (kneeAngle > 150) {
+                        this.squatStage = 'up';
+                        if (this.squatStatusElement) {
+                            this.squatStatusElement.textContent = 'Squat: Up position';
+                        }
+                    } else {
+                        this.squatStage = 'down';
+                        if (this.squatStatusElement) {
+                            this.squatStatusElement.textContent = 'Squat: Down position';
+                        }
+                    }
+                }
+                
+                return isUpright;
+            }
+            
+            detectLunge(landmarks) {
+                if (!this.exerciseTracking.lunges) return false;
+                
+                // Get relevant keypoints for left and right legs
+                const leftHip = landmarks[23];
+                const leftKnee = landmarks[25];
+                const leftAnkle = landmarks[27];
+                const rightHip = landmarks[24];
+                const rightKnee = landmarks[26];
+                const rightAnkle = landmarks[28];
+                
+                // Calculate knee angles
+                const leftKneeAngle = this.calculateAngle(leftHip, leftKnee, leftAnkle);
+                const rightKneeAngle = this.calculateAngle(rightHip, rightKnee, rightAnkle);
+                
+                // Detect lunge position based on one knee bent and one extended
+                const isLungePosition = (leftKneeAngle < 120 && rightKneeAngle > 150) || 
+                                       (rightKneeAngle < 120 && leftKneeAngle > 150);
+                
+                // Determine which leg is forward
+                let forwardLeg = 'left';
+                if (rightKneeAngle < leftKneeAngle) {
+                    forwardLeg = 'right';
+                }
+                
+                if (isLungePosition) {
+                    // Down position: knees bent in lunge
+                    if ((forwardLeg === 'left' && leftKneeAngle < 100) || 
+                        (forwardLeg === 'right' && rightKneeAngle < 100)) {
+                        
+                        if (this.lungeStage === 'up') {
+                            this.lungeStage = 'down';
+                            if (this.lungeStatusElement) {
+                                this.lungeStatusElement.textContent = `Lunge: Down position (${forwardLeg} forward)`;
+                            }
+                        }
+                    }
+                    
+                    // Up position: knees more extended
+                    if ((forwardLeg === 'left' && leftKneeAngle > 140) || 
+                        (forwardLeg === 'right' && rightKneeAngle > 140)) {
+                        
+                        if (this.lungeStage === 'down') {
+                            this.lungeStage = 'up';
+                            this.lungeCount += 1;
+                            if (this.lungeCountElement) {
+                                this.lungeCountElement.textContent = this.lungeCount;
+                            }
+                            if (this.lungeStatusElement) {
+                                this.lungeStatusElement.textContent = `Lunge: Up position (${forwardLeg} forward)`;
+                            }
+                            if (this.formFeedbackElement) {
+                                this.formFeedbackElement.textContent = 'Good lunge form!';
+                            }
+                            
+                            // Update calories burned
+                            this.updateTotalCalories();
+                        }
+                    }
+                }
+                
+                // Initialize stage if not set
+                if (this.lungeStage === null) {
+                    if ((forwardLeg === 'left' && leftKneeAngle > 140) || 
+                        (forwardLeg === 'right' && rightKneeAngle > 140)) {
+                        this.lungeStage = 'up';
+                        if (this.lungeStatusElement) {
+                            this.lungeStatusElement.textContent = `Lunge: Up position (${forwardLeg} forward)`;
+                        }
+                    } else {
+                        this.lungeStage = 'down';
+                        if (this.lungeStatusElement) {
+                            this.lungeStatusElement.textContent = `Lunge: Down position (${forwardLeg} forward)`;
+                        }
+                    }
+                }
+                
+                return isLungePosition;
+            }
+            
+            detectPlank(landmarks) {
+                if (!this.exerciseTracking.planks) return false;
+                
+                // Get relevant keypoints
+                const leftShoulder = landmarks[11];
+                const leftElbow = landmarks[13];
+                const leftWrist = landmarks[15];
+                const leftHip = landmarks[23];
+                const leftKnee = landmarks[25];
+                const leftAnkle = landmarks[27];
+                
+                // Calculate body angles
+                const elbowAngle = this.calculateAngle(leftShoulder, leftElbow, leftWrist);
+                const bodyAngle = this.calculateAngle(leftShoulder, leftHip, leftAnkle);
+                const legAngle = this.calculateAngle(leftHip, leftKnee, leftAnkle);
+                
+                // Check for plank position: arms bent around 90 degrees, body straight
+                const isElbowsCorrect = 70 < elbowAngle && elbowAngle < 110;
+                const isBodyStraight = 160 < bodyAngle;
+                const isLegsStaright = 160 < legAngle;
+                
+                const isInPlankPosition = isElbowsCorrect && isBodyStraight && isLegsStaright;
+                
+                // Handle plank timer
+                if (isInPlankPosition) {
+                    if (!this.isInPlank) {
+                        // Start plank timer
+                        this.isInPlank = true;
+                        this.plankStartTime = Date.now();
+                        if (this.plankStatusElement) {
+                            this.plankStatusElement.textContent = 'Plank: Position detected';
+                        }
+                        if (this.formFeedbackElement) {
+                            this.formFeedbackElement.textContent = 'Good plank form! Hold the position...';
+                        }
+                        
+                        // Start plank timer
+                        this.plankTimer = setInterval(() => {
+                            const plankElapsedSeconds = Math.floor((Date.now() - this.plankStartTime) / 1000);
+                            this.plankDuration = plankElapsedSeconds;
+                            
+                            const plankMinutes = Math.floor(plankElapsedSeconds / 60);
+                            const plankSeconds = plankElapsedSeconds % 60;
+                            if (this.plankTimeElement) {
+                                this.plankTimeElement.textContent = `${plankMinutes.toString().padStart(2, '0')}:${plankSeconds.toString().padStart(2, '0')}`;
+                            }
+                            
+                            // Update calories every 5 seconds
+                            if (plankElapsedSeconds % 5 === 0) {
+                                this.updateTotalCalories();
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    if (this.isInPlank) {
+                        // End plank timer
+                        this.isInPlank = false;
+                        clearInterval(this.plankTimer);
+                        this.plankTimer = null;
+                        if (this.plankStatusElement) {
+                            this.plankStatusElement.textContent = 'Plank: Not detected';
+                        }
+                        
+                        if (this.plankDuration > 5 && this.formFeedbackElement) {
+                            this.formFeedbackElement.textContent = `Plank held for ${this.plankDuration} seconds! Great job!`;
+                        }
+                    }
+                }
+                
+                return isInPlankPosition;
+            }
+            
             onResults(results) {
                 if (!this.isWorkoutActive) return;
                 
                 // Set canvas dimensions if needed
-                if (this.canvasElement.width !== results.image.width || 
-                    this.canvasElement.height !== results.image.height) {
-                    this.canvasElement.width = results.image.width;
-                    this.canvasElement.height = results.image.height;
-                }
-                
-                // Clear canvas
-                this.canvasCtx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
-                
-                // Draw the camera view
-                this.canvasCtx.drawImage(
-                    results.image, 0, 0, this.canvasElement.width, this.canvasElement.height);
-                
-                // If pose detection results are available
-                if (results.poseLandmarks) {
-                    // Draw pose landmarks
-                    window.drawConnectors(this.canvasCtx, results.poseLandmarks, window.POSE_CONNECTIONS,
-                                {color: '#00FF00', lineWidth: 2});
-                    window.drawLandmarks(this.canvasCtx, results.poseLandmarks,
-                                {color: '#FF0000', lineWidth: 1, radius: 3});
+                if (this.canvasElement && this.canvasCtx) {
+                    if (this.canvasElement.width !== results.image.width || 
+                        this.canvasElement.height !== results.image.height) {
+                        this.canvasElement.width = results.image.width;
+                        this.canvasElement.height = results.image.height;
+                    }
                     
-                    // Detect exercises
-                    this.detectPushUp(results.poseLandmarks);
-                    this.detectDumbbellCurl(results.poseLandmarks);
+                    // Clear canvas
+                    this.canvasCtx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
                     
-                    // Update current workout
-                    this.currentWorkout.pushUps = this.pushUpCount;
-                    this.currentWorkout.dumbbellCurls = this.dumbbellCurlCount;
-                    this.currentWorkout.caloriesBurned = parseFloat(this.caloriesBurned.toFixed(2));
+                    // Draw the camera view
+                    this.canvasCtx.drawImage(
+                        results.image, 0, 0, this.canvasElement.width, this.canvasElement.height);
+                    
+                    // If pose detection results are available
+                    if (results.poseLandmarks) {
+                        try {
+                            // Draw pose landmarks
+                            window.drawConnectors(this.canvasCtx, results.poseLandmarks, window.POSE_CONNECTIONS,
+                                        {color: '#00FF00', lineWidth: 2});
+                            window.drawLandmarks(this.canvasCtx, results.poseLandmarks,
+                                        {color: '#FF0000', lineWidth: 1, radius: 3});
+                            
+                            // Debug: Draw keypoints relevant for squat detection with labels
+                            const hip = results.poseLandmarks[23]; // Left hip
+                            const knee = results.poseLandmarks[25]; // Left knee
+                            const ankle = results.poseLandmarks[27]; // Left ankle
+                            const shoulder = results.poseLandmarks[11]; // Left shoulder
+                            
+                            // Highlight squat detection points
+                            if (this.exerciseTracking.squats) {
+                                // Draw larger landmarks for squat detection points
+                                this.canvasCtx.fillStyle = '#FFFF00';
+                                
+                                // Draw shoulder point
+                                this.canvasCtx.beginPath();
+                                this.canvasCtx.arc(
+                                    shoulder.x * this.canvasElement.width,
+                                    shoulder.y * this.canvasElement.height,
+                                    6, 0, 2 * Math.PI);
+                                this.canvasCtx.fill();
+                                
+                                // Draw hip point
+                                this.canvasCtx.beginPath();
+                                this.canvasCtx.arc(
+                                    hip.x * this.canvasElement.width,
+                                    hip.y * this.canvasElement.height,
+                                    6, 0, 2 * Math.PI);
+                                this.canvasCtx.fill();
+                                
+                                // Draw knee point
+                                this.canvasCtx.beginPath();
+                                this.canvasCtx.arc(
+                                    knee.x * this.canvasElement.width,
+                                    knee.y * this.canvasElement.height,
+                                    6, 0, 2 * Math.PI);
+                                this.canvasCtx.fill();
+                                
+                                // Draw ankle point
+                                this.canvasCtx.beginPath();
+                                this.canvasCtx.arc(
+                                    ankle.x * this.canvasElement.width,
+                                    ankle.y * this.canvasElement.height,
+                                    6, 0, 2 * Math.PI);
+                                this.canvasCtx.fill();
+                                
+                                // Calculate knee angle for display
+                                const kneeAngle = this.calculateAngle(hip, knee, ankle);
+                                
+                                // Display angle
+                                this.canvasCtx.fillStyle = '#FFFFFF';
+                                this.canvasCtx.font = '16px Arial';
+                                this.canvasCtx.fillText(
+                                    `Knee: ${Math.round(kneeAngle)}°`,
+                                    knee.x * this.canvasElement.width + 10,
+                                    knee.y * this.canvasElement.height);
+                            }
+                            
+                            // Detect exercises
+                            const isPushUpPosition = this.detectPushUp(results.poseLandmarks);
+                            const isInCurlPosition = this.detectDumbbellCurl(results.poseLandmarks);
+                            const isInSquatPosition = this.detectSquat(results.poseLandmarks);
+                            const isInLungePosition = this.detectLunge(results.poseLandmarks);
+                            const isInPlankPosition = this.detectPlank(results.poseLandmarks);
+                            
+                            // If no exercise is detected, provide a hint
+                            if (!isPushUpPosition && !isInCurlPosition && !isInSquatPosition && 
+                                !isInLungePosition && !isInPlankPosition && this.formFeedbackElement) {
+                                // Show general message only if it's been a while since last exercise
+                                if (Date.now() - this.startTime > 5000) {
+                                    this.formFeedbackElement.textContent = 'Move into position for an exercise';
+                                }
+                            }
+                            
+                            // Update current workout
+                            this.currentWorkout.pushUps = this.pushUpCount;
+                            this.currentWorkout.dumbbellCurls = this.dumbbellCurlCount;
+                            this.currentWorkout.squats = this.squatCount;
+                            this.currentWorkout.lunges = this.lungeCount;
+                            this.currentWorkout.plankTime = this.plankDuration;
+                            this.currentWorkout.caloriesBurned = parseFloat(this.caloriesBurned.toFixed(2));
+                        } catch (error) {
+                            console.error("Error processing pose landmarks:", error);
+                        }
+                    }
                 }
             }
         }
